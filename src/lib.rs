@@ -1,12 +1,15 @@
+use std::io::{Read, Write};
+
 #[cfg(feature = "async")]
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 const PACKET_SIZE: usize = 128;
 mod rcv;
+
 #[derive(Debug)]
 enum YmodemControlCode {
     Soh = 0x01,
-    Stx,
+    _Stx,
     Eot = 0x04,
     Ack = 0x06,
     Nak = 0x15,
@@ -35,11 +38,18 @@ pub struct YmodemSender<'a> {
     fdata: &'a [u8],
 }
 #[cfg(feature = "async")]
-pub trait YmodemAsyncSend {
-    fn send(&self, port: &mut serial2_tokio::SerialPort) -> impl std::future::Future<Output = Result<(), YmodemError>> + Send;
+pub trait YmodemAsyncSend<T>
+where
+    T: AsyncReadExt + AsyncWriteExt + Unpin,
+{
+    fn send(
+        &self,
+        port: &mut T,
+    ) -> impl std::future::Future<Output = Result<(), YmodemError>> + Send;
 }
-pub trait YmodemSend {
-    fn send(&self, port: &mut serial2::SerialPort) -> Result<(), YmodemError>;
+
+pub trait YmodemSend<T: Read + Write> {
+    fn send(&self, port: &mut T) -> Result<(), YmodemError>;
 }
 
 impl<'a> YmodemSender<'a> {
@@ -80,11 +90,10 @@ impl<'a> YmodemSender<'a> {
         block.push((crc_value & 0xFF) as u8);
         block
     }
-    fn send_packet(
-        &self,
-        port: &mut serial2::SerialPort,
-        packet: &[u8],
-    ) -> Result<(), YmodemError> {
+    fn send_packet<T>(&self, port: &mut T, packet: &[u8]) -> Result<(), YmodemError>
+    where
+        T: Read + Write,
+    {
         port.write_all(packet).unwrap();
         while let Err(e) = rcv::wait_for_ack(&mut *port) {
             if e == YmodemError::RequestReSend {
@@ -96,11 +105,10 @@ impl<'a> YmodemSender<'a> {
         Ok(())
     }
     #[cfg(feature = "async")]
-    async fn send_packet_async(
-        &self,
-        port: &mut serial2_tokio::SerialPort,
-        packet: &[u8],
-    ) -> Result<(), YmodemError> {
+    async fn send_packet_async<T>(&self, port: &mut T, packet: &[u8]) -> Result<(), YmodemError>
+    where
+        T: AsyncReadExt + AsyncWriteExt + Unpin,
+    {
         port.write_all(packet).await.unwrap();
         while let Err(e) = rcv::r#async::wait_for_ack(port).await {
             if e == YmodemError::RequestReSend {
@@ -112,8 +120,11 @@ impl<'a> YmodemSender<'a> {
         Ok(())
     }
 }
-impl<'a> YmodemSend for YmodemSender<'a> {
-    fn send(&self, port: &mut serial2::SerialPort) -> Result<(), YmodemError> {
+impl<'a, T> YmodemSend<T> for YmodemSender<'a>
+where
+    T: Read + Write,
+{
+    fn send(&self, port: &mut T) -> Result<(), YmodemError> {
         let mut response = [0; 1];
         loop {
             port.read_exact(&mut response).unwrap();
@@ -142,8 +153,11 @@ impl<'a> YmodemSend for YmodemSender<'a> {
     }
 }
 #[cfg(feature = "async")]
-impl<'a> YmodemAsyncSend for YmodemSender<'a> {
-    async fn send(&self, port: &mut serial2_tokio::SerialPort) -> Result<(), YmodemError> {
+impl<'a, T> YmodemAsyncSend<T> for YmodemSender<'a>
+where
+    T: AsyncReadExt + AsyncWriteExt + Unpin + Send,
+{
+    async fn send(&self, port: &mut T) -> Result<(), YmodemError> {
         let mut response = [0; 1];
         loop {
             port.read_exact(&mut response).await.unwrap();

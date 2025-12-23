@@ -6,8 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [features]
 default =[]
-async = ["tokio/io-util"]
+async = ["tokio","tokio/io-util", "serial2-tokio"]
 [dependencies]
-serial2 = "0.2.26"
-serial2-tokio = "0.1.13"
-tokio = { version = "1.39.3", default_features =false }
+serial2 = "0.2.33"
+
+serial2-tokio = { version = "0.1.19", optional = true }
+tokio = { version = "1.48.0", default_features =false, optional=true}
